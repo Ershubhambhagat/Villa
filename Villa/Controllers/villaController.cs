@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Data;
 using Villa.Data;
+using Villa.Logging;
 using Villa.Models.Dto;
 
 namespace Villa.Controllers
@@ -11,15 +12,20 @@ namespace Villa.Controllers
     public class villaController : ControllerBase
     {
         private readonly ILogger<villaController> _logger;
+        private readonly ILogging _logging;
 
-        public villaController(ILogger<villaController> logger)
+        public villaController(ILogger<villaController> logger,ILogging logging)//
         {
             _logger = logger;
+            _logging = logging;
         }
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public ActionResult<IEnumerable<VillaDTO>> GetVillas()
         {
+
+            _logging.Log("error","Get All Villa");
+
             _logger.LogInformation("Get All Villa");
             return Ok(VillaStore.villaList);
         }
@@ -72,6 +78,7 @@ namespace Villa.Controllers
         {
             if (id == 0)
             {
+                _logging.Log( " Id is not available", "error");
                 _logger.LogError(id, " Id is not available");
                 return BadRequest("your Id is 0");
 
@@ -89,6 +96,8 @@ namespace Villa.Controllers
         {
             if (Id == null || Id != villaDTO.Id)
             {
+                _logging.Log("error", "Id is not available");
+
                 _logger.LogError(Id, "Id is not available");
 
                 return BadRequest();
@@ -104,8 +113,10 @@ namespace Villa.Controllers
         public ActionResult UpdatePartilaVilla(int Id, [FromBody] JsonPatchDocument<VillaDTO> patchDto)
         {
             if (patchDto == null || Id == 0)
+                
             {
-                _logger.LogError(Id, "is not available");
+                _logging.Log("error", "Id is not available");
+                _logger.LogError(Id, "is not available","error");
 
                 return BadRequest();
             }
