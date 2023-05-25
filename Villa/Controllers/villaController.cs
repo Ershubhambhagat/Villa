@@ -1,9 +1,12 @@
-﻿using Microsoft.AspNetCore.JsonPatch;
+﻿using AutoMapper;
+using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Villa.Data;
 using Villa.Logging;
 using Villa.Models.Dto;
+using Villa.Repository.IRepository;
+
 namespace Villa.Controllers
 {
     [Route("api/[Controller]")]
@@ -12,12 +15,15 @@ namespace Villa.Controllers
     {
         private readonly ILogger<villaController> _logger;
         private readonly ILogging _logging;
-        private readonly ApplicationDbContext _db;
-        public villaController(ILogger<villaController> logger, ILogging logging, ApplicationDbContext db)//
+        private readonly IMapper _mapper;
+        private readonly IVillaRepository _dbVilla;
+
+        public villaController(ILogger<villaController> logger, ILogging logging, IMapper mapper,IVillaRepository villaRepository)//
         {
             _logger = logger;
             _logging = logging;
-            _db = db;
+            _mapper = mapper;
+            _dbVilla = villaRepository;
         }
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -25,8 +31,8 @@ namespace Villa.Controllers
         {
             _logging.Log("error", "Get All Villa");
             _logger.LogInformation("Get All Villa");
-            return Ok(await _db.Villas.ToListAsync());
-            //return Ok(VillaStore.villaList);//for local store 
+            IEnumerable<Models.Villa> villaList=await _dbVilla.GetAllVillaAsync();
+            return Ok(_mapper.Map<List<VillaDTO>>(villaList));
         }
         [HttpGet("{Id:int}", Name = "GetVill")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -38,39 +44,38 @@ namespace Villa.Controllers
             {
                 return BadRequest();
             }
-            //var villa = VillaStore.villaList.FirstOrDefault(u => u.Id == Id);//for local store 
-            var villa = await _db.Villas.FirstOrDefaultAsync(d => d.Id == Id);
+            var villa = await _dbVilla.GetVillaAsync(d => d.Id == Id);
             if (villa == null)
             {
                 return NotFound(Id + " Not found");
             }
-            return Ok(villa);
+            return Ok(_mapper.Map<VillaDTO>(villa));
         }
         [HttpPost]
-        public async Task<ActionResult<VillaDTO>> CreateVilla([FromBody] VillaCreateDTO villaDTOs)
+        public async Task<ActionResult<VillaDTO>> CreateVilla([FromBody] VillaCreateDTO createDTO)
         {
-            if (await _db.Villas.FirstOrDefaultAsync(n => n.Name.ToLower() == villaDTOs.Name.ToLower()) != null)
+            if (await _dbVilla.GetVillaAsync(n => n.Name.ToLower() == createDTO.Name.ToLower()) != null)
             {
                 ModelState.AddModelError("CustomError", "villa Already Exist!");
                 return BadRequest(ModelState);
             }
-            if (villaDTOs == null)
+            if (createDTO == null)
             {
-                return BadRequest(villaDTOs);
+                return BadRequest(createDTO);
             }
-            return CreatedAtRoute("GetVill", new { id = villaDTOs.Id }, villaDTOs);
-            Models.Villa model = new()
-            {
-                Name = villaDTOs.Name,
-                Amenity = villaDTOs.Amenity,
-                Details = villaDTOs.Details,
-                Rate = villaDTOs.Rate,
-                ImageURL = villaDTOs.ImageURL,
-                Occupancy = villaDTOs.Occupancy,
-                SqFt = villaDTOs.SqFt,
-            };
-            await _db.Villas.AddAsync(model);
-            await _db.SaveChangesAsync();
+            Models.Villa model = _mapper.Map<Models.Villa>(createDTO);
+            //Models.Villa model = new()
+            //{
+            //    Name = createDTO.Name,
+            //    Amenity = createDTO.Amenity,
+            //    Details = createDTO.Details,
+            //    Rate = createDTO.Rate,
+            //    ImageURL = createDTO.ImageURL,
+            //    Occupancy = createDTO.Occupancy,
+            //    SqFt = createDTO.SqFt,
+            //};
+
+            await _dbVilla.CreateAsync(model);
             return Ok(model);
         }
         [HttpDelete("{id:int}", Name = "Deletevilla")]
@@ -83,21 +88,18 @@ namespace Villa.Controllers
                 return BadRequest("your Id is 0");
 
             }
-            var Villa = VillaStore.villaList.FirstOrDefault(m => m.Id == id);//for local store 
-            var Villa = await _db.Villas.FirstOrDefaultAsync(d => d.Id == id);
+            var Villa = await _dbVilla.GetVillaAsync(d => d.Id == id);
             if (Villa == null)
             {
                 return BadRequest("Villa is not available in database");
             }
-            VillaStore.villaList.Remove(Villa);//for local store 
-            _db.Remove(Villa);
-            await _db.SaveChangesAsync();
+            _dbVilla.RemoveAsync(Villa);
             return NoContent();
         }
         [HttpPut("{Id:int}", Name = "Update Record")]
-        public async Task<IActionResult> UpdateVilla(int Id, [FromBody] VillaUpdateDTO villaDTO)
+        public async Task<IActionResult> UpdateVilla(int Id, [FromBody] VillaUpdateDTO updateDTO)
         {
-            if (Id == null && Id > 0)
+            if (updateDTO == null && updateDTO.Id > 0)
             {
                 _logging.Log("error", "Id is not available");
 
@@ -105,29 +107,29 @@ namespace Villa.Controllers
 
                 return BadRequest();
             }
-            var villa = await _db.Villas.AsNoTracking().FirstOrDefaultAsync(d => d.Id == Id);
+            var villa = await _dbVilla.GetVillaAsync(d => d.Id == Id,tracked:false);
             if (villa == null)
             {
                 _logger.LogError(Id, "Id is not available in database");
                 return BadRequest("villa not Present");
             }
-            Models.Villa model = new()
-            {
-                Name = villaDTO.Name,
-                Id = villaDTO.Id,
-                Amenity = villaDTO.Amenity,
-                Rate = villaDTO.Rate,
-                SqFt = villaDTO.SqFt,
-                ImageURL = villaDTO.ImageURL,
-                Occupancy = villaDTO.Occupancy,
-                Details = villaDTO.Details,
-            };
-            _db.Villas.Update(model);
-            await _db.SaveChangesAsync();
+            Models.Villa model=_mapper.Map<Models.Villa>(updateDTO);
+            //Models.Villa model = new()
+            //{
+            //    Name = updateDTO.Name,
+            //    Id = updateDTO.Id,
+            //    Amenity = updateDTO.Amenity,
+            //    Rate = updateDTO.Rate,
+            //    SqFt = updateDTO.SqFt,
+            //    ImageURL = updateDTO.ImageURL,
+            //    Occupancy = updateDTO.Occupancy,
+            //    Details = updateDTO.Details,
+            //};
+            _dbVilla.UpdateAsync(model);
             return Ok(model);
         }
         [HttpPatch("{Id:int}", Name = "UpdateVialla")]
-        public async Task<IActionResult> UpdatePartilaVilla(int Id, [FromBody] JsonPatchDocument<VillaUpdateDTO> patchDto)
+        public async Task<IActionResult> UpdatePartilaVilla(int Id, [FromBody] JsonPatchDocument<VillaUpdateDTO> patchDto )
         {
             if (patchDto == null || Id == 0)
             {
@@ -135,38 +137,39 @@ namespace Villa.Controllers
                 _logger.LogError(Id, "is not available", "error");
                 return BadRequest();
             }
-            var villa = await _db.Villas.AsNoTracking().FirstOrDefaultAsync(d => d.Id == Id);
+            var villa = await _dbVilla.GetVillaAsync(d => d.Id == Id);
             if (villa == null)
             {
                 return BadRequest();
             }
-            VillaUpdateDTO villaDTOmodel = new()
-            {
-                Name = villa.Name,
-                Details = villa.Details,
-                Rate = villa.Rate,
-                SqFt = villa.SqFt,
-                ImageURL = villa.ImageURL,
-                Occupancy = villa.Occupancy,
-                Amenity = villa.Amenity,
-            };
-            patchDto.ApplyTo(villaDTOmodel, ModelState);
+            VillaUpdateDTO villaUpdate = _mapper.Map<VillaUpdateDTO>(villa);
+            //VillaUpdateDTO villaUpdate = new()
+            //{
+            //    Name = villa.Name,
+            //    Details = villa.Details,
+            //    Rate = villa.Rate,
+            //    SqFt = villa.SqFt,
+            //    ImageURL = villa.ImageURL,
+            //    Occupancy = villa.Occupancy,
+            //    Amenity = villa.Amenity,
+            //};
+            patchDto.ApplyTo(villaUpdate, ModelState);
             if (!ModelState.IsValid)
             {
                 return BadRequest();
             }
-            Models.Villa model = new()
-            {
-                Name = villaDTOmodel.Name,
-                Details = villaDTOmodel.Details,
-                Rate = villaDTOmodel.Rate,
-                SqFt = villaDTOmodel.SqFt,
-                ImageURL = villaDTOmodel.ImageURL,
-                Occupancy = villaDTOmodel.Occupancy,
-                Amenity = villaDTOmodel.Amenity,
-            };
-            _db.Villas.Update(model);
-            await _db.SaveChangesAsync();
+            Models.Villa model = _mapper.Map<Models.Villa>(villaUpdate);
+            //Models.Villa model = new()
+            //{
+            //    Name = villaUpdate.Name,
+            //    Details = villaUpdate.Details,
+            //    Rate = villaUpdate.Rate,
+            //    SqFt = villaUpdate.SqFt,
+            //    ImageURL = villaUpdate.ImageURL,
+            //    Occupancy = villaUpdate.Occupancy,
+            //    Amenity = villaUpdate.Amenity,
+            //};
+           _dbVilla.UpdateAsync(model);
             return Ok(model);
         }
     }
